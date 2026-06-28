@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Any, cast
+
 import polars as pl
 import pytest
 
@@ -134,3 +137,123 @@ def test_on_error_error_raises_under_lazy_collect():
 
     with pytest.raises(Exception):
         lf.collect()
+
+
+def _diagnostic_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [rec for rec in caplog.records if rec.name == "polars_fastjson.diagnostics"]
+
+
+def _diagnostic_payload(record: logging.LogRecord) -> dict[str, Any]:
+    return cast(dict[str, Any], getattr(record, "fastjson_diagnostics"))
+
+
+def test_summary_diagnostics_logs_under_null_mode(caplog):
+    df = pl.DataFrame(
+        {
+            "payload": [
+                '{"id": "a", "score": "bad", "tags": "oops"}',
+                "not json",
+            ]
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="polars_fastjson.diagnostics"):
+        out = df.with_columns(
+            fastjson_decode(
+                pl.col("payload"),
+                schema=SCHEMA,
+                on_error="null",
+                diagnostics="summary",
+            ).alias("parsed")
+        )
+
+    assert out["parsed"].to_list() == [
+        {"id": "a", "score": None, "tags": None},
+        None,
+    ]
+
+    records = _diagnostic_records(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "fastjson decode produced 3 issues in column" in message
+    assert "$.score type_mismatch" in message
+    assert "expected: f64" in message
+    assert "$.tags type_mismatch" in message
+    assert "expected: array" in message
+    assert "invalid_json" in message
+
+    payload = _diagnostic_payload(records[0])
+    assert payload["column"] == "payload"
+    assert payload["issues"] == 3
+    clusters = {(c["path"], c["kind"]): c for c in payload["clusters"]}
+    assert clusters[("$.score", "type_mismatch")]["samples"] == ['"bad"']
+    assert clusters[("$.tags", "type_mismatch")]["found"] == "string"
+    assert clusters[("$", "invalid_json")]["expected"] == "json"
+
+
+def test_diagnostics_off_logs_nothing(caplog):
+    df = pl.DataFrame({"payload": ['{"id": "a", "score": "bad"}']})
+
+    with caplog.at_level(logging.WARNING, logger="polars_fastjson.diagnostics"):
+        df.with_columns(
+            fastjson_decode(pl.col("payload"), schema=SCHEMA).alias("parsed")
+        )
+
+    assert _diagnostic_records(caplog) == []
+
+
+def test_summary_diagnostics_id_accepts_column_name_and_caps_ids(caplog):
+    df = pl.DataFrame(
+        {
+            "event_id": [f"evt_{i}" for i in range(25)],
+            "payload": ['{"score": "bad"}' for _ in range(25)],
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="polars_fastjson.diagnostics"):
+        df.with_columns(
+            fastjson_decode(
+                pl.col("payload"),
+                schema={"score": pl.Float64},
+                diagnostics="summary",
+                diagnostics_id="event_id",
+            ).alias("parsed")
+        )
+
+    payload = _diagnostic_payload(_diagnostic_records(caplog)[0])
+    cluster = payload["clusters"][0]
+    assert cluster["path"] == "$.score"
+    assert cluster["count"] == 25
+    assert cluster["ids"] == [f"evt_{i}" for i in range(20)]
+    assert cluster["omitted_ids"] == 5
+
+
+def test_summary_diagnostics_id_accepts_expression(caplog):
+    df = pl.DataFrame(
+        {
+            "event_id": ["a", "b"],
+            "payload": ['{"score": "bad"}', '{"score": "worse"}'],
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="polars_fastjson.diagnostics"):
+        df.with_columns(
+            fastjson_decode(
+                pl.col("payload"),
+                schema={"score": pl.Float64},
+                diagnostics="summary",
+                diagnostics_id=pl.concat_str([pl.lit("id-"), pl.col("event_id")]),
+            ).alias("parsed")
+        )
+
+    payload = _diagnostic_payload(_diagnostic_records(caplog)[0])
+    assert payload["clusters"][0]["ids"] == ["id-a", "id-b"]
+
+
+def test_invalid_diagnostics_mode_raises():
+    with pytest.raises(ValueError, match="diagnostics"):
+        fastjson_decode(
+            pl.col("payload"),
+            schema=SCHEMA,
+            diagnostics=cast(Any, "verbose"),
+        )

@@ -12,11 +12,13 @@
 //! The Python plugin lives in `polars-fastjson-plugin`.
 
 pub mod decode;
+pub mod diagnostics;
 pub mod dtype;
 pub mod error;
 pub mod ir;
 pub mod parse;
 
+pub use diagnostics::{DecodeDiagnostics, DiagnosticsMode, DiagnosticsOptions, DiagnosticsSummary};
 pub use dtype::ir_to_polars;
 pub use error::ErrorMode;
 pub use ir::{FieldIR, SchemaType, TimeUnit};
@@ -53,4 +55,17 @@ pub fn decode_series(
     opts: &DecodeOptions,
 ) -> PolarsResult<Series> {
     decode::decode_series(values, ir, opts)
+}
+
+/// Decode a string column of JSON and collect clustered diagnostics.
+///
+/// This is an opt-in entry point; the normal [`decode_series`] path does not
+/// pay for diagnostic row/path bookkeeping.
+pub fn decode_series_with_diagnostics(
+    values: &StringChunked,
+    ir: &SchemaType,
+    opts: &DecodeOptions,
+    diagnostics_options: DiagnosticsOptions,
+) -> PolarsResult<DecodeDiagnostics> {
+    decode::decode_series_with_diagnostics(values, ir, opts, diagnostics_options)
 }

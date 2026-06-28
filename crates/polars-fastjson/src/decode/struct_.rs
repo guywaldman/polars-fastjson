@@ -14,7 +14,8 @@
 use polars::prelude::*;
 use simd_json::{BorrowedValue, StaticNode};
 
-use super::{build_field_series, scalar::RowValues};
+use super::{build_field_series, build_field_series_with_diagnostics, scalar::RowValues};
+use crate::diagnostics::{is_json_null, DiagRowValue, DiagRowValues, DiagnosticsCollector};
 use crate::ir::FieldIR;
 
 /// Build a `Struct` `Series` described by `fields`.
@@ -79,6 +80,78 @@ pub fn build_struct_series(
         let null = Series::full_null(series.name().clone(), len, series.dtype());
         // `Series::zip_with(mask, other)` keeps `self` where mask is true,
         // `other` (null) where false.
+        series = series.zip_with(&mask, &null)?;
+    }
+
+    Ok(series)
+}
+
+/// Diagnostic variant of [`build_struct_series`].
+pub(crate) fn build_struct_series_with_diagnostics<'a, 'v>(
+    name: PlSmallStr,
+    rows: DiagRowValues<'a, 'v>,
+    fields: &[FieldIR],
+    coerce_flag: bool,
+    path: &str,
+    diagnostics: &mut DiagnosticsCollector,
+) -> PolarsResult<Series> {
+    let len = rows.len();
+
+    let row_valid: Vec<bool> = rows
+        .iter()
+        .map(|row| matches!(row.value, Some(BorrowedValue::Object(_))))
+        .collect();
+
+    for row in rows {
+        if let Some(value) = row.value {
+            if !matches!(value, BorrowedValue::Object(_)) && !is_json_null(value) {
+                diagnostics.record_value_mismatch(row.row_idx, path, "object", value);
+            }
+        }
+    }
+
+    let mut children: Vec<Series> = Vec::with_capacity(fields.len());
+    let mut field_rows: Vec<DiagRowValue<'_, '_>> = Vec::with_capacity(len);
+
+    for f in fields {
+        field_rows.clear();
+        let key = f.json_key.as_deref().unwrap_or(f.name.as_str());
+        for row in rows {
+            let navigated = match row.value {
+                Some(BorrowedValue::Object(map)) => match map.get(key) {
+                    Some(BorrowedValue::Static(StaticNode::Null)) => None,
+                    other => other,
+                },
+                _ => None,
+            };
+            field_rows.push(DiagRowValue {
+                row_idx: row.row_idx,
+                value: navigated,
+            });
+        }
+        let child_path = format!("{path}.{}", f.name);
+        let child = build_field_series_with_diagnostics(
+            f.name.as_str().into(),
+            &field_rows,
+            &f.dtype,
+            coerce_flag,
+            &child_path,
+            diagnostics,
+        )?;
+        children.push(child);
+    }
+
+    let st = if children.is_empty() {
+        let dtype = DataType::Struct(vec![]);
+        return Ok(Series::full_null(name, len, &dtype));
+    } else {
+        StructChunked::from_series(name, len, children.iter())?
+    };
+
+    let mut series = st.into_series();
+    if !row_valid.iter().all(|&v| v) {
+        let mask = BooleanChunked::from_slice("__mask".into(), &row_valid);
+        let null = Series::full_null(series.name().clone(), len, series.dtype());
         series = series.zip_with(&mask, &null)?;
     }
 

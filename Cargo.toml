@@ -23,6 +23,7 @@ polars = { version = "0.52", features = ["dtype-struct", "dtype-decimal", "lazy"
 # `python` to polars-mem-engine so its `#[cfg(feature="python")]` match arms
 # compile in. Without `lazy`, mem-engine 0.52.0 has non-exhaustive matches (E0004).
 pyo3-polars = { version = "0.25", features = ["derive", "lazy"] }
+pyo3 = "0.26"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 simd-json = "0.17"

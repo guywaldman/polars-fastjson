@@ -8,6 +8,9 @@ pub mod struct_;
 use polars::prelude::*;
 use simd_json::{BorrowedValue, StaticNode};
 
+use crate::diagnostics::{
+    DecodeDiagnostics, DiagRowValue, DiagRowValues, DiagnosticsCollector, DiagnosticsOptions,
+};
 use crate::error::ErrorMode;
 use crate::ir::SchemaType;
 use crate::DecodeOptions;
@@ -27,6 +30,46 @@ pub(crate) fn build_field_series(
             struct_::build_struct_series(name, rows, fields, coerce_flag)
         }
         _ => scalar::build_scalar_series(name, rows, ir, coerce_flag),
+    }
+}
+
+/// Diagnostic variant of [`build_field_series`].
+///
+/// This is intentionally separate from the hot-path dispatcher so diagnostics
+/// do not add path/row bookkeeping to normal decodes.
+pub(crate) fn build_field_series_with_diagnostics<'a, 'v>(
+    name: PlSmallStr,
+    rows: DiagRowValues<'a, 'v>,
+    ir: &SchemaType,
+    coerce_flag: bool,
+    path: &str,
+    diagnostics: &mut DiagnosticsCollector,
+) -> PolarsResult<Series> {
+    match ir {
+        SchemaType::List { inner } => list::build_list_series_with_diagnostics(
+            name,
+            rows,
+            inner,
+            coerce_flag,
+            path,
+            diagnostics,
+        ),
+        SchemaType::Struct { fields } => struct_::build_struct_series_with_diagnostics(
+            name,
+            rows,
+            fields,
+            coerce_flag,
+            path,
+            diagnostics,
+        ),
+        _ => scalar::build_scalar_series_with_diagnostics(
+            name,
+            rows,
+            ir,
+            coerce_flag,
+            path,
+            diagnostics,
+        ),
     }
 }
 
@@ -134,6 +177,112 @@ pub fn decode_series(
     opts: &DecodeOptions,
 ) -> PolarsResult<Series> {
     decode_rows(values, ir, opts.coerce, opts.on_error)
+}
+
+/// Decode with opt-in clustered diagnostics.
+///
+/// This mirrors [`decode_rows`] but threads row identity and path information
+/// through a separate set of builders.
+pub fn decode_rows_with_diagnostics(
+    values: &StringChunked,
+    ir: &SchemaType,
+    coerce_flag: bool,
+    on_error: ErrorMode,
+    diagnostics_options: DiagnosticsOptions,
+) -> PolarsResult<DecodeDiagnostics> {
+    let len = values.len();
+    let mut diagnostics = DiagnosticsCollector::new(values.name().to_string(), diagnostics_options);
+
+    let mut buffers: Vec<Vec<u8>> = Vec::with_capacity(len);
+    let mut buffer_index: Vec<Option<usize>> = Vec::with_capacity(len);
+    let mut buffer_row: Vec<usize> = Vec::with_capacity(len);
+
+    for (row_idx, opt_raw) in values.into_iter().enumerate() {
+        match opt_raw {
+            None => buffer_index.push(None),
+            Some(raw) => {
+                let mut buf = Vec::with_capacity(raw.len());
+                buf.extend_from_slice(raw.as_bytes());
+                buffer_index.push(Some(buffers.len()));
+                buffer_row.push(row_idx);
+                buffers.push(buf);
+            }
+        }
+    }
+
+    let mut parsed: Vec<Option<BorrowedValue>> = Vec::with_capacity(buffers.len());
+    for (i, b) in buffers.iter_mut().enumerate() {
+        match crate::parse::parse_borrowed_buf(b) {
+            Ok(v) => parsed.push(Some(v)),
+            Err(e) => {
+                let row_idx = buffer_row[i];
+                let raw = values.get(row_idx).unwrap_or("");
+                diagnostics.record_parse_error(row_idx, raw, &e);
+                match on_error {
+                    ErrorMode::Error => {
+                        return Err(PolarsError::ComputeError(
+                            format!("fastjson_decode: invalid JSON at row {row_idx}: {e}").into(),
+                        ));
+                    }
+                    ErrorMode::Null => parsed.push(None),
+                }
+            }
+        }
+    }
+
+    let rows: Vec<DiagRowValue<'_, '_>> = buffer_index
+        .iter()
+        .enumerate()
+        .map(|(row_idx, opt)| DiagRowValue {
+            row_idx,
+            value: opt.and_then(|i| parsed[i].as_ref()),
+        })
+        .collect();
+
+    if let SchemaType::Struct { .. } = ir {
+        if on_error == ErrorMode::Error {
+            for row in &rows {
+                match row.value {
+                    Some(BorrowedValue::Object(_)) | None => {}
+                    Some(BorrowedValue::Static(StaticNode::Null)) => {}
+                    Some(other) => {
+                        diagnostics.record_value_mismatch(row.row_idx, "$", "object", other);
+                        let found = json_kind(other);
+                        return Err(PolarsError::ComputeError(
+                            format!(
+                                "fastjson_decode: top-level JSON is {found} at row {}, \
+                                 expected an object for the struct schema",
+                                row.row_idx
+                            )
+                            .into(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut series = build_field_series_with_diagnostics(
+        values.name().clone(),
+        &rows,
+        ir,
+        coerce_flag,
+        "$",
+        &mut diagnostics,
+    )?;
+    series.rename(values.name().clone());
+    let summary = diagnostics.finish();
+    Ok(DecodeDiagnostics { series, summary })
+}
+
+/// Decode with opt-in diagnostics, using [`DecodeOptions`].
+pub fn decode_series_with_diagnostics(
+    values: &StringChunked,
+    ir: &SchemaType,
+    opts: &DecodeOptions,
+    diagnostics_options: DiagnosticsOptions,
+) -> PolarsResult<DecodeDiagnostics> {
+    decode_rows_with_diagnostics(values, ir, opts.coerce, opts.on_error, diagnostics_options)
 }
 
 /// Human-readable kind name for a parsed JSON value, used in error messages.

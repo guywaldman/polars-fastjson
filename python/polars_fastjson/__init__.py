@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from importlib.metadata import PackageNotFoundError, version
 
 from .api import fastjson_decode
+
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 try:
     __version__ = version("polars-fastjson")

@@ -1679,6 +1679,7 @@ version = "0.2.0"
 dependencies = [
  "polars",
  "polars-fastjson",
+ "pyo3",
  "pyo3-polars",
  "serde",
  "serde_json",

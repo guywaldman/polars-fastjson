@@ -13,6 +13,7 @@ Run via::
     just bench                       # default sweep across SWEEP row counts
     just bench --rows 500000         # single row count (disables the sweep)
     just bench --repeats 7 --seed 1
+    just bench --diagnostics all     # compare off, summary, and summary + ID
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import statistics
 import string
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import polars as pl
 
@@ -44,6 +45,8 @@ SCHEMA: dict[str, pl.DataType] = {
 # Default row-count sweep, used when --rows is not given.
 SWEEP: tuple[int, ...] = (50_000, 200_000, 1_000_000)
 
+DiagnosticsMode = Literal["off", "summary", "summary-id"]
+
 # Scenario names, in display order.
 SCENARIOS: tuple[str, ...] = (
     "all-valid",
@@ -51,6 +54,8 @@ SCENARIOS: tuple[str, ...] = (
     "with-off-schema",
     "mixed",
 )
+
+DIAGNOSTIC_MODES: tuple[DiagnosticsMode, ...] = ("off", "summary", "summary-id")
 
 
 def _random_word(rng: random.Random, *, min_len: int = 3, max_len: int = 8) -> str:
@@ -136,7 +141,7 @@ def generate_raw(
             raws.append(_off_schema_row(rng))
         else:
             raws.append(_valid_row(rng))
-    return pl.DataFrame({"raw": raws})
+    return pl.DataFrame({"row_id": [f"row_{i}" for i in range(rows)], "raw": raws})
 
 
 def _scenario_fracs(
@@ -154,10 +159,19 @@ def _scenario_fracs(
     raise ValueError(f"unknown scenario: {scenario}")
 
 
-def _run_fastjson(df: pl.DataFrame) -> pl.DataFrame:
+def _run_fastjson(df: pl.DataFrame, *, diagnostics: DiagnosticsMode) -> pl.DataFrame:
+    diagnostics_mode: Literal["off", "summary"] = (
+        "off" if diagnostics == "off" else "summary"
+    )
+    diagnostics_id = "row_id" if diagnostics == "summary-id" else None
     return df.with_columns(
         fastjson_decode(
-            pl.col("raw"), schema=SCHEMA, on_error="null", coerce=True
+            pl.col("raw"),
+            schema=SCHEMA,
+            on_error="null",
+            coerce=True,
+            diagnostics=diagnostics_mode,
+            diagnostics_id=diagnostics_id,
         ).alias("parsed")
     )
 
@@ -165,6 +179,7 @@ def _run_fastjson(df: pl.DataFrame) -> pl.DataFrame:
 @dataclass(frozen=True)
 class Result:
     scenario: str
+    diagnostics: DiagnosticsMode
     rows: int
     median_ms: float
 
@@ -175,18 +190,20 @@ class Result:
         return self.rows / (self.median_ms / 1000.0)
 
 
-def _time(df: pl.DataFrame, *, repeats: int) -> float:
-    """Median wall-clock (ms) over ``repeats`` runs after one warmup.
+def _time_diagnostics(
+    df: pl.DataFrame, *, repeats: int, diagnostics: DiagnosticsMode
+) -> float:
+    """Median wall-clock (ms) for one diagnostics mode.
 
     Each run fully materializes the decoded column so timing reflects real
     decode work rather than lazy-plan construction.
     """
-    _run_fastjson(df)  # warmup
+    _run_fastjson(df, diagnostics=diagnostics)
     samples: list[float] = []
     for _ in range(repeats):
         start = time.perf_counter()
-        out = _run_fastjson(df)
-        _ = out["parsed"].len()  # force materialization
+        out = _run_fastjson(df, diagnostics=diagnostics)
+        _ = out["parsed"].len()
         samples.append((time.perf_counter() - start) * 1000.0)
     return statistics.median(samples)
 
@@ -198,6 +215,7 @@ def run_benchmark(
     seed: int,
     malformed_frac: float,
     off_schema_frac: float,
+    diagnostics_modes: list[DiagnosticsMode],
 ) -> list[Result]:
     results: list[Result] = []
     for scenario in SCENARIOS:
@@ -211,26 +229,49 @@ def run_benchmark(
                 off_schema_frac=o_frac,
                 seed=seed,
             )
-            results.append(
-                Result(
-                    scenario=scenario,
-                    rows=rows,
-                    median_ms=_time(df, repeats=repeats),
+            for diagnostics in diagnostics_modes:
+                results.append(
+                    Result(
+                        scenario=scenario,
+                        diagnostics=diagnostics,
+                        rows=rows,
+                        median_ms=_time_diagnostics(
+                            df, repeats=repeats, diagnostics=diagnostics
+                        ),
+                    )
                 )
-            )
     return results
 
 
 def _print_table(results: Iterable[Result]) -> None:
-    header = f"{'scenario':<18}{'rows':>12}{'median ms':>14}{'rows/sec':>16}"
+    rows = list(results)
+    baseline = {
+        (res.scenario, res.rows): res.median_ms
+        for res in rows
+        if res.diagnostics == "off"
+    }
+    header = (
+        f"{'scenario':<18}"
+        f"{'diagnostics':<13}"
+        f"{'rows':>12}"
+        f"{'median ms':>14}"
+        f"{'rows/sec':>16}"
+        f"{'vs off':>10}"
+    )
     print(header)
     print("-" * len(header))
-    for res in results:
+    for res in rows:
+        base = baseline.get((res.scenario, res.rows))
+        overhead = ""
+        if base is not None and res.diagnostics != "off":
+            overhead = f"{((res.median_ms / base) - 1.0) * 100.0:+.1f}%"
         print(
             f"{res.scenario:<18}"
+            f"{res.diagnostics:<13}"
             f"{res.rows:>12,}"
             f"{res.median_ms:>14.2f}"
             f"{res.rows_per_sec:>16,.0f}"
+            f"{overhead:>10}"
         )
 
 
@@ -258,6 +299,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0.05,
         help="fraction of valid-but-off-schema rows in off-schema scenarios",
     )
+    parser.add_argument(
+        "--diagnostics",
+        choices=("off", "summary", "summary-id", "all"),
+        default="off",
+        help="diagnostics mode(s) to benchmark",
+    )
     return parser.parse_args(argv)
 
 
@@ -275,11 +322,16 @@ def main(argv: list[str] | None = None) -> None:
     row_counts = [args.rows] if args.rows is not None else list(SWEEP)
     if any(r < 1 for r in row_counts):
         raise SystemExit("--rows must be >= 1")
+    if args.diagnostics == "all":
+        diagnostics_modes: list[DiagnosticsMode] = list(DIAGNOSTIC_MODES)
+    else:
+        diagnostics_modes = [cast("DiagnosticsMode", args.diagnostics)]
 
     print(
         f"fastjson_decode self-benchmark\n"
         f"schema: id:str, score:f64, tags:list[str], nested:{{a:i64, b:str}}\n"
         f"row_counts={row_counts} repeats={args.repeats} seed={args.seed} "
+        f"diagnostics={diagnostics_modes} "
         f"malformed_frac={args.malformed_frac:.3f} "
         f"off_schema_frac={args.off_schema_frac:.3f}\n"
     )
@@ -290,6 +342,7 @@ def main(argv: list[str] | None = None) -> None:
         seed=args.seed,
         malformed_frac=args.malformed_frac,
         off_schema_frac=args.off_schema_frac,
+        diagnostics_modes=diagnostics_modes,
     )
     _print_table(results)
 

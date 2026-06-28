@@ -2,7 +2,9 @@
 
 Performant and safe JSON to `Struct` projection for [Polars](https://pola.rs).
 
-## Overview & Motivation
+---
+
+## Overview & motivation
 
 Polars is a blazing-fast DataFrame library for Python. It is built on top of
 Rust's [polars](https://github.com/pola-rs/polars) and is a great choice for
@@ -136,6 +138,31 @@ here — use a differing alias to read one key into another attribute name).
 # strict parity with str.json_decode: bad rows raise instead of nulling.
 fastjson_decode(pl.col("raw"), schema=schema, on_error="error")
 ```
+
+### Diagnostics
+
+You may want informative error messages if some columns fail to parse, and would want this to have minimal overhead.  
+You can use `diagnostics="summary"` to log parse/decode failures through the standard Python logger
+(under `polars_fastjson.diagnostics`, which you can suppresss if needed):
+
+```python
+import logging
+
+logging.basicConfig(level=logging.WARNING)
+
+fastjson_decode(
+    pl.col("raw"),
+    schema=schema,
+    on_error="null",
+    diagnostics="summary",
+    diagnostics_id="event_id",  # optional: attach bounded IDs to each cluster
+)
+```
+
+Structured data is attached to each `LogRecord` as
+`record.fastjson_diagnostics`.
+
+### Type coercion
 
 `coerce=True` (default) applies a conservative coercion table at leaves — e.g.
 a JSON string `"123"` decoded into an int field becomes `123`. Set
