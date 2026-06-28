@@ -41,7 +41,11 @@ fn child(series: &Series, name: &str) -> Series {
 }
 
 fn opts(on_error: ErrorMode, coerce: bool) -> DecodeOptions {
-    DecodeOptions { on_error, coerce }
+    DecodeOptions {
+        on_error,
+        coerce,
+        strict_required_fields: false,
+    }
 }
 
 /// The schema field `s` wrapping a single top-level struct with one field

@@ -51,6 +51,16 @@ def test_pydantic_normalize_ir():
     }
 
 
+def test_pydantic_optional_annotation_is_not_required():
+    class OptionalModel(BaseModel):
+        required_value: int
+        optional_value: Optional[int]
+
+    ir = normalize(OptionalModel)
+    required = {f["name"]: f["required"] for f in ir["fields"]}
+    assert required == {"required_value": True, "optional_value": False}
+
+
 EXPECTED_DTYPE = pl.Struct(
     {
         "name": pl.String,
@@ -102,6 +112,64 @@ def test_pydantic_decode_lazy_matches_eager():
     assert lazy["parsed"].dtype == EXPECTED_DTYPE
     assert lazy.equals(eager)
     assert lazy["parsed"].to_list() == [EXPECTED_VALUE, None]
+
+
+def test_pydantic_strict_required_missing_field_nulls_row():
+    class Metadata(BaseModel):
+        key: str
+
+    class User(BaseModel):
+        name: str
+        value: int
+        metadata: Metadata
+
+    df = pl.DataFrame(
+        {
+            "payload": [
+                '{"name": "ok", "value": 1, "metadata": {"key": "x"}}',
+                '{"name": "bad", "value_corrupted": 2, "metadata": {"key": "x"}}',
+            ]
+        }
+    )
+
+    lenient = df.with_columns(
+        fastjson_decode(pl.col("payload"), schema=User).alias("parsed")
+    )
+    assert lenient["parsed"].to_list()[1] == {
+        "name": "bad",
+        "value": None,
+        "metadata": {"key": "x"},
+    }
+
+    strict = df.with_columns(
+        fastjson_decode(
+            pl.col("payload"),
+            schema=User,
+            strict_required_fields=True,
+        ).alias("parsed")
+    )
+    assert strict["parsed"].to_list() == [
+        {"name": "ok", "value": 1, "metadata": {"key": "x"}},
+        None,
+    ]
+
+
+def test_pydantic_strict_required_missing_field_raises_in_error_mode():
+    class User(BaseModel):
+        name: str
+        value: int
+
+    df = pl.DataFrame({"payload": ['{"name": "bad", "value_corrupted": 2}']})
+
+    with pytest.raises(Exception, match=r"required field \$\.value failed at row 0"):
+        df.with_columns(
+            fastjson_decode(
+                pl.col("payload"),
+                schema=User,
+                on_error="error",
+                strict_required_fields=True,
+            ).alias("parsed")
+        )
 
 
 def test_pydantic_alias_ir_uses_json_key():
@@ -227,6 +295,32 @@ def test_pydantic_model_union_raises_when_then_guidance():
 
     with pytest.raises(NotImplementedError, match="model unions are not supported"):
         normalize(Holder)
+
+
+def test_pydantic_bare_dict_raises_clear_message():
+    class DictModel(BaseModel):
+        metadata: dict
+
+    with pytest.raises(TypeError) as exc_info:
+        normalize(DictModel)
+
+    message = str(exc_info.value)
+    assert "unsupported mapping type for schema" in message
+    assert "static output dtype" in message
+    assert "nested BaseModel/dataclass/TypedDict" in message
+    assert "explicit pl.Struct schema" in message
+
+
+def test_pydantic_typed_dict_value_map_raises_clear_message():
+    class DictModel(BaseModel):
+        metadata: dict[str, str]
+
+    with pytest.raises(TypeError) as exc_info:
+        normalize(DictModel)
+
+    message = str(exc_info.value)
+    assert "unsupported mapping type for schema" in message
+    assert "Dynamic dict[str, T] map fields are not supported yet" in message
 
 
 def test_pydantic_discriminated_union_raises():

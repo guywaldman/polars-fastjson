@@ -17,6 +17,15 @@ fn field(name: &str, dtype: SchemaType) -> FieldIR {
     }
 }
 
+fn required_field(name: &str, dtype: SchemaType) -> FieldIR {
+    FieldIR {
+        name: name.to_string(),
+        dtype,
+        json_key: None,
+        required: true,
+    }
+}
+
 fn field_keyed(name: &str, json_key: &str, dtype: SchemaType) -> FieldIR {
     FieldIR {
         name: name.to_string(),
@@ -35,7 +44,19 @@ fn child(series: &Series, name: &str) -> Series {
 }
 
 fn opts(on_error: ErrorMode, coerce: bool) -> DecodeOptions {
-    DecodeOptions { on_error, coerce }
+    DecodeOptions {
+        on_error,
+        coerce,
+        strict_required_fields: false,
+    }
+}
+
+fn strict_opts(on_error: ErrorMode, coerce: bool) -> DecodeOptions {
+    DecodeOptions {
+        on_error,
+        coerce,
+        strict_required_fields: true,
+    }
 }
 
 #[test]
@@ -155,6 +176,42 @@ fn missing_field_is_null() {
     assert!(!out.is_null().get(0).unwrap());
     assert_eq!(child(&out, "id").i64().unwrap().get(0), Some(1));
     assert_eq!(child(&out, "name").str().unwrap().get(0), None);
+}
+
+#[test]
+fn strict_required_missing_field_nulls_row() {
+    let schema = struct_of(vec![
+        required_field("id", SchemaType::I64),
+        required_field("name", SchemaType::Str),
+    ]);
+    let col = input(
+        "raw",
+        &[Some(r#"{"id": 1, "name": "ok"}"#), Some(r#"{"id": 2}"#)],
+    );
+
+    let out = decode_series(&col, &schema, &strict_opts(ErrorMode::Null, true)).unwrap();
+    assert!(!out.is_null().get(0).unwrap());
+    assert!(out.is_null().get(1).unwrap());
+}
+
+#[test]
+fn strict_required_type_failure_nulls_row() {
+    let schema = struct_of(vec![required_field("id", SchemaType::I64)]);
+    let col = input("raw", &[Some(r#"{"id": 1}"#), Some(r#"{"id": "bad"}"#)]);
+
+    let out = decode_series(&col, &schema, &strict_opts(ErrorMode::Null, true)).unwrap();
+    assert!(!out.is_null().get(0).unwrap());
+    assert!(out.is_null().get(1).unwrap());
+}
+
+#[test]
+fn strict_required_failure_raises_in_error_mode() {
+    let schema = struct_of(vec![required_field("id", SchemaType::I64)]);
+    let col = input("raw", &[Some(r#"{"id": "bad"}"#)]);
+
+    let err = decode_series(&col, &schema, &strict_opts(ErrorMode::Error, true)).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("required field $.id failed at row 0"), "{msg}");
 }
 
 #[test]

@@ -2,6 +2,7 @@
 
 pub mod coerce;
 pub mod list;
+pub mod required;
 pub mod scalar;
 pub mod struct_;
 
@@ -86,6 +87,7 @@ pub fn decode_rows(
     ir: &SchemaType,
     coerce_flag: bool,
     on_error: ErrorMode,
+    strict_required_fields: bool,
 ) -> PolarsResult<Series> {
     let len = values.len();
 
@@ -164,7 +166,19 @@ pub fn decode_rows(
         }
     }
 
-    let mut series = build_field_series(values.name().clone(), &rows, ir, coerce_flag)?;
+    let effective_rows = if strict_required_fields {
+        Some(apply_required_field_policy(
+            &rows,
+            ir,
+            coerce_flag,
+            on_error,
+        )?)
+    } else {
+        None
+    };
+    let rows = effective_rows.as_deref().unwrap_or(&rows);
+
+    let mut series = build_field_series(values.name().clone(), rows, ir, coerce_flag)?;
     series.rename(values.name().clone());
     Ok(series)
 }
@@ -176,7 +190,13 @@ pub fn decode_series(
     ir: &SchemaType,
     opts: &DecodeOptions,
 ) -> PolarsResult<Series> {
-    decode_rows(values, ir, opts.coerce, opts.on_error)
+    decode_rows(
+        values,
+        ir,
+        opts.coerce,
+        opts.on_error,
+        opts.strict_required_fields,
+    )
 }
 
 /// Decode with opt-in clustered diagnostics.
@@ -188,6 +208,7 @@ pub fn decode_rows_with_diagnostics(
     ir: &SchemaType,
     coerce_flag: bool,
     on_error: ErrorMode,
+    strict_required_fields: bool,
     diagnostics_options: DiagnosticsOptions,
 ) -> PolarsResult<DecodeDiagnostics> {
     let len = values.len();
@@ -262,9 +283,22 @@ pub fn decode_rows_with_diagnostics(
         }
     }
 
+    let effective_rows = if strict_required_fields {
+        Some(apply_required_field_policy_with_diagnostics(
+            &rows,
+            ir,
+            coerce_flag,
+            on_error,
+            &mut diagnostics,
+        )?)
+    } else {
+        None
+    };
+    let rows = effective_rows.as_deref().unwrap_or(&rows);
+
     let mut series = build_field_series_with_diagnostics(
         values.name().clone(),
-        &rows,
+        rows,
         ir,
         coerce_flag,
         "$",
@@ -282,7 +316,92 @@ pub fn decode_series_with_diagnostics(
     opts: &DecodeOptions,
     diagnostics_options: DiagnosticsOptions,
 ) -> PolarsResult<DecodeDiagnostics> {
-    decode_rows_with_diagnostics(values, ir, opts.coerce, opts.on_error, diagnostics_options)
+    decode_rows_with_diagnostics(
+        values,
+        ir,
+        opts.coerce,
+        opts.on_error,
+        opts.strict_required_fields,
+        diagnostics_options,
+    )
+}
+
+fn apply_required_field_policy<'a, 'v>(
+    rows: &[Option<&'a BorrowedValue<'v>>],
+    ir: &SchemaType,
+    coerce_flag: bool,
+    on_error: ErrorMode,
+) -> PolarsResult<Vec<Option<&'a BorrowedValue<'v>>>> {
+    let mut out = Vec::with_capacity(rows.len());
+    for (row_idx, row) in rows.iter().enumerate() {
+        let Some(value) = row else {
+            out.push(None);
+            continue;
+        };
+        if let Some(failure) = required::first_required_failure(value, ir, coerce_flag, "$") {
+            match on_error {
+                ErrorMode::Error => {
+                    return Err(PolarsError::ComputeError(
+                        format!(
+                            "fastjson_decode: required field {} failed at row {row_idx}: {}",
+                            failure.path,
+                            failure.render()
+                        )
+                        .into(),
+                    ));
+                }
+                ErrorMode::Null => out.push(None),
+            }
+        } else {
+            out.push(Some(*value));
+        }
+    }
+    Ok(out)
+}
+
+fn apply_required_field_policy_with_diagnostics<'a, 'v>(
+    rows: &[DiagRowValue<'a, 'v>],
+    ir: &SchemaType,
+    coerce_flag: bool,
+    on_error: ErrorMode,
+    diagnostics: &mut DiagnosticsCollector,
+) -> PolarsResult<Vec<DiagRowValue<'a, 'v>>> {
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let Some(value) = row.value else {
+            out.push(*row);
+            continue;
+        };
+        if let Some(failure) = required::first_required_failure(value, ir, coerce_flag, "$") {
+            diagnostics.record_required_field_failure(
+                row.row_idx,
+                &failure.path,
+                failure.expected,
+                failure.found,
+                failure.reason,
+            );
+            match on_error {
+                ErrorMode::Error => {
+                    return Err(PolarsError::ComputeError(
+                        format!(
+                            "fastjson_decode: required field {} failed at row {}: {}",
+                            failure.path,
+                            row.row_idx,
+                            failure.render()
+                        )
+                        .into(),
+                    ));
+                }
+                ErrorMode::Null => out.push(DiagRowValue {
+                    row_idx: row.row_idx,
+                    value: None,
+                }),
+            }
+        } else {
+            out.push(*row);
+        }
+    }
+    Ok(out)
 }
 
 /// Human-readable kind name for a parsed JSON value, used in error messages.

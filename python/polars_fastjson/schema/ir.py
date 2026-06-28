@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 import types
 import typing
+from collections.abc import Mapping, MutableMapping
 from typing import Any
 
 # Scalar tags that take no parameters.
@@ -144,6 +145,28 @@ def raise_union_unsupported(non_none_args: list[Any]) -> typing.NoReturn:
     )
 
 
+def _is_mapping_type(tp: Any) -> bool:
+    origin = typing.get_origin(tp)
+    return tp in (
+        dict,
+        typing.Dict,
+        typing.Mapping,
+        typing.MutableMapping,
+        Mapping,
+        MutableMapping,
+    ) or origin in (dict, Mapping, MutableMapping)
+
+
+def _raise_mapping_unsupported(tp: Any) -> typing.NoReturn:
+    raise TypeError(
+        f"unsupported mapping type for schema: {tp!r}. "
+        "polars-fastjson needs a static output dtype; arbitrary dict/object "
+        "fields are not supported yet. For fixed keys, use a nested "
+        "BaseModel/dataclass/TypedDict or pass an explicit pl.Struct schema. "
+        "Dynamic dict[str, T] map fields are not supported yet."
+    )
+
+
 def _strip_optional(tp: Any) -> Any:
     """Reduce ``Optional[X]`` / ``X | None`` to ``X`` (nullability is implicit).
 
@@ -180,6 +203,9 @@ def py_type_to_ir(tp: Any, *, nested_resolver) -> dict[str, Any]:
     if origin in (list, typing.List):  # noqa: UP006
         (inner,) = typing.get_args(tp) or (str,)
         return list_(py_type_to_ir(inner, nested_resolver=nested_resolver))
+
+    if _is_mapping_type(tp):
+        _raise_mapping_unsupported(tp)
 
     # Nested model / dataclass / TypedDict.
     nested = nested_resolver(tp)

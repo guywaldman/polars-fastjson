@@ -24,6 +24,8 @@ struct FastjsonKwargs {
     schema_ir: SchemaType,
     on_error: String,
     coerce: bool,
+    #[serde(default)]
+    strict_required_fields: bool,
     #[serde(default = "default_diagnostics")]
     diagnostics: String,
     // Reserved for `extra="ignore"|"capture"`; only "ignore" is honored in v1.
@@ -80,6 +82,7 @@ fn fastjson_decode(inputs: &[Series], kwargs: FastjsonKwargs) -> PolarsResult<Se
     let opts = DecodeOptions {
         on_error: parse_on_error(&kwargs.on_error)?,
         coerce: kwargs.coerce,
+        strict_required_fields: kwargs.strict_required_fields,
     };
 
     match parse_diagnostics(&kwargs.diagnostics)? {

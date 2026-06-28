@@ -34,6 +34,9 @@ pub struct DecodeOptions {
     /// converted to the target type (e.g. `"123"` coerces to int).
     /// When `false`, only the exactly-matching JSON kind is accepted, and other kinds become null fields.
     pub coerce: bool,
+    /// When `true`, required fields that are missing, null, or fail to decode
+    /// make their containing row follow `on_error`.
+    pub strict_required_fields: bool,
 }
 
 impl Default for DecodeOptions {
@@ -41,6 +44,7 @@ impl Default for DecodeOptions {
         Self {
             on_error: ErrorMode::Null,
             coerce: true,
+            strict_required_fields: false,
         }
     }
 }

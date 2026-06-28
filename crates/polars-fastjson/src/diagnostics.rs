@@ -190,6 +190,27 @@ impl DiagnosticsCollector {
         );
     }
 
+    pub fn record_required_field_failure(
+        &mut self,
+        row_idx: usize,
+        path: &str,
+        expected: &str,
+        found: Option<&str>,
+        reason: &str,
+    ) {
+        self.record(
+            ClusterKey {
+                kind: "required_field".to_string(),
+                path: path.to_string(),
+                expected: Some(expected.to_string()),
+                found: found.map(str::to_string),
+                reason: Some(reason.to_string()),
+            },
+            row_idx,
+            None,
+        );
+    }
+
     fn record(&mut self, key: ClusterKey, row_idx: usize, sample: Option<String>) {
         self.issues += 1;
 

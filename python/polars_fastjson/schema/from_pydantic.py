@@ -102,8 +102,10 @@ def from_pydantic(tp: Any) -> dict[str, Any]:
         _check_field_unsupported(name, field_info)
         json_key = _resolve_json_key(name, field_info)
         ann = field_info.annotation
-        inner, _was_optional = _strip_optional_args(ann)
+        inner, was_optional = _strip_optional_args(ann)
         dtype = _ir.py_type_to_ir(inner, nested_resolver=_resolve_nested)
         required = bool(getattr(field_info, "is_required", lambda: False)())
+        if was_optional:
+            required = False
         fields.append(_ir.field(name, dtype, required=required, json_key=json_key))
     return _ir.struct(fields)

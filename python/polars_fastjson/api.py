@@ -21,6 +21,7 @@ def fastjson_decode(
     on_error: str = "null",
     coerce: bool = True,
     extra: str = "ignore",
+    strict_required_fields: bool = False,
     diagnostics: DiagnosticsMode = "off",
     diagnostics_id: IntoExprColumn | None = None,
 ) -> pl.Expr:
@@ -36,6 +37,8 @@ def fastjson_decode(
         coerce: When ``True`` (default), apply the coercion table; when
             ``False``, leaf type mismatches become null fields.
         extra: ``"ignore"`` (default) drops JSON fields not in the schema.
+        strict_required_fields: When ``True``, required fields that are missing,
+            null, or fail to decode make the row follow ``on_error``.
         diagnostics: ``"off"`` (default) emits no diagnostics. ``"summary"``
             logs clustered batch-level diagnostics through
             ``polars_fastjson.diagnostics``.
@@ -71,6 +74,7 @@ def fastjson_decode(
             "on_error": on_error,
             "coerce": coerce,
             "extra": extra,
+            "strict_required_fields": strict_required_fields,
             "diagnostics": diagnostics,
         },
         is_elementwise=True,

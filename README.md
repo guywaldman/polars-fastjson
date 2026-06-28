@@ -139,6 +139,21 @@ here — use a differing alias to read one key into another attribute name).
 fastjson_decode(pl.col("raw"), schema=schema, on_error="error")
 ```
 
+Set `strict_required_fields=True` to make required schema fields row-level
+failures instead of null fields. With `on_error="null"` the row becomes null;
+with `on_error="error"` decoding raises. This is useful when you want to filter
+out rows whose required fields did not decode:
+
+```python
+parsed = df.with_columns(
+    fastjson_decode(
+        pl.col("raw"),
+        schema=User,
+        strict_required_fields=True,
+    ).alias("parsed")
+).filter(pl.col("parsed").is_not_null())
+```
+
 ### Diagnostics
 
 You may want informative error messages if some columns fail to parse, and would want this to have minimal overhead.  
