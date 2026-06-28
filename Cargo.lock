@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "polars-fastjson"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "polars-core",
  "serde",
@@ -1616,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "polars-fastjson-plugin"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "polars",
  "polars-fastjson",
