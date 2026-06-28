@@ -6,7 +6,7 @@ Performant and safe JSON to `Struct` projection for [Polars](https://pola.rs).
 
 Polars is a blazing-fast DataFrame library for Python. It is built on top of
 Rust's [polars](https://github.com/pola-rs/polars) and is a great choice for
-data wrangling.  
+data wrangling.
 However, in case you have a large DataFrame with dynamic JSON columns, where the schema may break or the fields may get malformed, the existing ecosystem doesn't have a safe and ergonomic solution.
 
 For example:
@@ -15,7 +15,7 @@ For example:
 1. Working around the above with JSON path by using `pl.col("json").str.json_path_match("$.field")` is not performant (requires parsing each field individually, which can add up for a huge JSON) and does not enforce schema
 
 `polars-fastjson` does the opposite: given a JSON string column and a target schema, it projects each row into a `Struct`, and bad JSON / missing fields / wrong leaf types degrade to **null** (or coerced
-values) instead of raising (unless you opt into strict mode).  
+values) instead of raising (unless you opt into strict mode).
 It is a real `pl.Expr` backed by a Rust [pyo3-polars](https://github.com/pola-rs/pyo3-polars) plugin, so it is vectorized, GIL-free, and lazy/streaming-compatible.
 
 `polars-fastjson` supports the following schema sources (see [#schema-sources](#schema-sources) for more details):
@@ -108,9 +108,9 @@ here — use a differing alias to read one key into another attribute name).
 `Optional[X]` / `X | None` is supported (nullable).
 
 > [!NOTE]
-> 
+>
 > While the existing support for pydantic _should_ suffice for the vast majority of use cases, not all features are supported.
-> 
+>
 > For example:
 >
 > - validators (field / model)
