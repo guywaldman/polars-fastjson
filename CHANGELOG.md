@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/guywaldman/polars-fastjson/compare/v0.3.0...v0.3.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* update README ([c2cb665](https://github.com/guywaldman/polars-fastjson/commit/c2cb6650af83610875352bd26a9a47c14632d755))
+
 ## [0.3.0](https://github.com/guywaldman/polars-fastjson/compare/v0.2.0...v0.3.0) (2026-06-28)
 
 
