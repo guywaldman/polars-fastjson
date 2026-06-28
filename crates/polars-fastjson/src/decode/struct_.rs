@@ -11,7 +11,7 @@
 //! are assembled with [`StructChunked::from_series`]. Rows whose value is not a
 //! JSON object are marked null at the struct (outer) level.
 
-use polars::prelude::*;
+use polars_core::prelude::*;
 use simd_json::{BorrowedValue, StaticNode};
 
 use super::{build_field_series, build_field_series_with_diagnostics, scalar::RowValues};

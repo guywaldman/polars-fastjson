@@ -7,7 +7,7 @@
 //! Temporal leaves build their physical integer column and then cast to the
 //! logical dtype, guaranteeing agreement with [`crate::dtype::ir_to_polars`].
 
-use polars::prelude::*;
+use polars_core::prelude::*;
 
 use super::coerce;
 use crate::diagnostics::{expected_type, DiagRowValue, DiagRowValues, DiagnosticsCollector};

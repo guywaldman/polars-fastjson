@@ -1,6 +1,6 @@
 //! Decode tests covering the lenient semantics matrix and the coercion table.
 
-use polars::prelude::*;
+use polars_core::prelude::*;
 use polars_fastjson::ir::{FieldIR, SchemaType};
 use polars_fastjson::{decode_series, DecodeOptions, ErrorMode};
 
@@ -521,7 +521,7 @@ fn temporal_datetime_parse_utc() {
     let ts = child(&out, "ts");
     assert_eq!(
         ts.dtype(),
-        &DataType::Datetime(polars::prelude::TimeUnit::Microseconds, None)
+        &DataType::Datetime(polars_core::prelude::TimeUnit::Microseconds, None)
     );
     let phys = ts.to_physical_repr();
     let phys = phys.i64().unwrap();

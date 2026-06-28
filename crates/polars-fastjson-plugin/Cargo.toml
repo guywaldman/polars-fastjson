@@ -14,5 +14,5 @@ polars-fastjson = { path = "../polars-fastjson" }
 pyo3-polars.workspace = true
 pyo3.workspace = true
 polars.workspace = true
+polars-lazy.workspace = true
 serde.workspace = true
-serde_json.workspace = true

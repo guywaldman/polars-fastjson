@@ -39,7 +39,7 @@ pub(crate) type DiagRowValues<'a, 'v> = &'a [DiagRowValue<'a, 'v>];
 
 /// A completed diagnostic decode result.
 pub struct DecodeDiagnostics {
-    pub series: polars::prelude::Series,
+    pub series: polars_core::prelude::Series,
     pub summary: DiagnosticsSummary,
 }
 
@@ -371,7 +371,26 @@ fn truncate(value: &str) -> String {
 }
 
 fn quote_string(value: &str) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"))
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            '\u{08}' => quoted.push_str("\\b"),
+            '\u{0C}' => quoted.push_str("\\f"),
+            '\n' => quoted.push_str("\\n"),
+            '\r' => quoted.push_str("\\r"),
+            '\t' => quoted.push_str("\\t"),
+            ch if ch <= '\u{1F}' => {
+                use std::fmt::Write as _;
+                write!(quoted, "\\u{:04x}", ch as u32).expect("writing to String cannot fail");
+            }
+            ch => quoted.push(ch),
+        }
+    }
+    quoted.push('"');
+    quoted
 }
 
 fn render_limited_list(values: &[String], omitted: usize) -> String {
@@ -452,5 +471,10 @@ mod tests {
         assert!(rendered.contains("$.tags[] type_mismatch"));
         assert!(rendered.contains("expected: string"));
         assert!(rendered.contains("found: string"));
+    }
+
+    #[test]
+    fn quote_string_uses_json_escapes() {
+        assert_eq!(quote_string("a\"b\\c\n\t\u{1f}"), r#""a\"b\\c\n\t\u001f""#);
     }
 }

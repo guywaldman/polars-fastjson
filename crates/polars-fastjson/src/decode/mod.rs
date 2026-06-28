@@ -6,7 +6,7 @@ pub mod required;
 pub mod scalar;
 pub mod struct_;
 
-use polars::prelude::*;
+use polars_core::prelude::*;
 use simd_json::{BorrowedValue, StaticNode};
 
 use crate::diagnostics::{

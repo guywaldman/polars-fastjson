@@ -4,8 +4,8 @@
 //! failed element becomes a null element. A non-array value (or a null/absent
 //! row) yields a null list.
 
-use polars::chunked_array::builder::AnonymousOwnedListBuilder;
-use polars::prelude::*;
+use polars_core::chunked_array::builder::AnonymousOwnedListBuilder;
+use polars_core::prelude::*;
 use simd_json::BorrowedValue;
 
 use super::{build_field_series, build_field_series_with_diagnostics};

@@ -23,7 +23,7 @@ pub use dtype::ir_to_polars;
 pub use error::ErrorMode;
 pub use ir::{FieldIR, SchemaType, TimeUnit};
 
-use polars::prelude::{PolarsResult, Series, StringChunked};
+use polars_core::prelude::{PolarsResult, Series, StringChunked};
 
 /// Runtime options for a decode pass.
 #[derive(Debug, Clone, Copy)]

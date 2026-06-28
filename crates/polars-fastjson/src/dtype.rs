@@ -3,7 +3,7 @@
 //! The same `SchemaType` drives both the declared output dtype (plan-time callback)
 //! and the runtime builders, guaranteeing they are always in-sync.
 
-use polars::prelude::{DataType, Field, PolarsResult, TimeUnit as PlTimeUnit, TimeZone};
+use polars_core::prelude::{DataType, Field, PolarsResult, TimeUnit as PlTimeUnit, TimeZone};
 
 use crate::ir::{FieldIR, SchemaType, TimeUnit};
 

@@ -1,6 +1,6 @@
 //! Tests for the IR -> Polars dtype mapping.
 
-use polars::prelude::{DataType, Field, TimeUnit as PlTimeUnit};
+use polars_core::prelude::{DataType, Field, TimeUnit as PlTimeUnit};
 use polars_fastjson::ir::{FieldIR, SchemaType, TimeUnit};
 use polars_fastjson::ir_to_polars;
 

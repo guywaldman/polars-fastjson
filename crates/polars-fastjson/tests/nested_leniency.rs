@@ -9,7 +9,7 @@
 //!   - non-object elements in a struct-list -> null element vs struct-of-nulls?
 //!   - deeply nested struct->list[struct], list[list[i64]], coerce interactions.
 
-use polars::prelude::*;
+use polars_core::prelude::*;
 use polars_fastjson::ir::{FieldIR, SchemaType};
 use polars_fastjson::{decode_series, DecodeOptions, ErrorMode};
 
