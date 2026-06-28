@@ -1,0 +1,39 @@
+[build-system]
+requires = ["maturin>=1.13,<1.14"]
+build-backend = "maturin"
+
+[project]
+name = "polars-fastjson"
+description = "Lenient, schema-aware JSON -> Struct projection for Polars"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+dependencies = ["polars>=1.8,<2"]
+
+[tool.maturin]
+manifest-path = "crates/polars-fastjson-plugin/Cargo.toml"
+module-name = "polars_fastjson._internal"
+python-source = "python"
+
+[tool.ruff.lint]
+ignore = [
+    "E731", # Do not assign a `lambda` expression, use a `def`
+]
+
+[dependency-groups]
+dev = [
+    "maturin>=1.13,<1.14",
+    "prek>=0.4,<0.5",
+    "pytest>=8.3,<9.1",
+    "ruff>=0.15,<0.16",
+    "pydantic>=2.6,<3",
+    "ty>=0.0.55,<0.1",
+]

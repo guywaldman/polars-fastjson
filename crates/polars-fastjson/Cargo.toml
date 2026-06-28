@@ -1,0 +1,23 @@
+[package]
+name = "polars-fastjson"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Lenient, schema-aware JSON projection for Polars"
+license = "MIT"
+repository.workspace = true
+readme = "README.md"
+keywords = ["polars", "json", "arrow", "schema", "decode"]
+categories = ["encoding", "parser-implementations"]
+include = [
+    "Cargo.toml",
+    "README.md",
+    "src/**/*.rs",
+]
+
+[dependencies]
+polars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+simd-json.workspace = true
+anyhow.workspace = true

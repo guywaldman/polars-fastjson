@@ -1,0 +1,17 @@
+[package]
+name = "polars-fastjson-plugin"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "_internal"
+crate-type = ["cdylib"]
+
+[dependencies]
+polars-fastjson = { path = "../polars-fastjson" }
+pyo3-polars.workspace = true
+polars.workspace = true
+serde.workspace = true
+serde_json.workspace = true

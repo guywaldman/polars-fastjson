@@ -1,0 +1,30 @@
+[workspace]
+members = ["crates/polars-fastjson", "crates/polars-fastjson-plugin"]
+resolver = "3"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.88"
+repository = "https://github.com/guywaldman/polars-fastjson"
+
+[workspace.dependencies]
+# pyo3-polars 0.25 requires polars 0.52 (its `derive` macro expands to polars
+# 0.52 types), so polars is pinned to 0.52 here. polars 0.52's polars-json in
+# turn requires simd-json 0.17.
+# `timezones` works around a bug in polars-expr 0.52.0: its
+# src/dispatch/datetime.rs gates `use polars_core::prelude::DataType` behind
+# `#[cfg(feature = "timezones")]`, but uses `DataType` in always-compiled fns
+# (time/date/datetime/replace) -> E0433 unless `timezones` is enabled. The
+# dtype-* features only pull `temporal`, not `timezones`, so they don't fix it.
+polars = { version = "0.52", features = ["dtype-struct", "dtype-decimal", "lazy", "zip_with", "timezones", "dtype-datetime", "dtype-date", "dtype-time", "dtype-duration"] }
+# `lazy` is required alongside `derive`: pyo3-polars 0.25's `derive` enables
+# `polars-plan/python` (adding IR::PythonScan / FileScanIR::PythonDataset
+# variants) but only `lazy` enables `polars-lazy/python`, which propagates
+# `python` to polars-mem-engine so its `#[cfg(feature="python")]` match arms
+# compile in. Without `lazy`, mem-engine 0.52.0 has non-exhaustive matches (E0004).
+pyo3-polars = { version = "0.25", features = ["derive", "lazy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+simd-json = "0.17"
+anyhow = "1"
+polars-fastjson = { path = "crates/polars-fastjson" }
