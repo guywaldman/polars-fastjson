@@ -156,7 +156,7 @@ parsed = df.with_columns(
 
 ### Diagnostics
 
-You may want informative error messages if some columns fail to parse, and would want this to have minimal overhead.  
+You may want informative error messages if some columns fail to parse, and would want this to have minimal overhead.
 You can use `diagnostics="summary"` to log parse/decode failures through the standard Python logger
 (under `polars_fastjson.diagnostics`, which you can suppresss if needed):
 
