@@ -1,0 +1,96 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  crates-io:
+    name: Publish crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      # TODO: Introduce Trusted Publishing
+      - name: Publish crate
+        run: cargo publish -p polars-fastjson --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  wheels:
+    name: Build wheels
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - runner: ubuntu-22.04
+            target: x86_64
+            artifact: linux-x86_64
+          - runner: ubuntu-22.04
+            target: aarch64
+            artifact: linux-aarch64
+          - runner: macos-15-intel
+            target: x86_64
+            artifact: macos-x86_64
+          - runner: macos-latest
+            target: aarch64
+            artifact: macos-aarch64
+          - runner: windows-latest
+            target: x64
+            artifact: windows-x64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter
+          sccache: true
+          manylinux: auto
+      - name: Upload wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-${{ matrix.platform.artifact }}
+          path: dist
+
+  sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-sdist
+          path: dist
+
+  pypi:
+    name: Publish PyPI
+    runs-on: ubuntu-latest
+    needs: [crates-io, wheels, sdist]
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v7
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+        # TODO: Use Trusted Publishing
+      - name: Publish Python package
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
