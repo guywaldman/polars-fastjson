@@ -59,7 +59,7 @@ impl DiagnosticsSummary {
     pub fn render(&self) -> String {
         let issue_word = if self.issues == 1 { "issue" } else { "issues" };
         let mut lines = vec![format!(
-            "fastjson decode produced {} {issue_word} in column {:?}; nulls were written for failed values",
+            "fastjson decode produced {} {issue_word} in column {:?}",
             self.issues, self.column
         )];
 
