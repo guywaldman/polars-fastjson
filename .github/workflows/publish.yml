@@ -36,6 +36,14 @@ jobs:
           - runner: ubuntu-22.04
             target: aarch64
             artifact: linux-aarch64
+          - runner: ubuntu-22.04
+            target: x86_64
+            artifact: linux-musl-x86_64
+            manylinux: musllinux_1_2
+          - runner: ubuntu-22.04
+            target: aarch64
+            artifact: linux-musl-aarch64
+            manylinux: musllinux_1_2
           - runner: macos-15-intel
             target: x86_64
             artifact: macos-x86_64
@@ -59,7 +67,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: true
-          manylinux: auto
+          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
       - name: Upload wheel
         uses: actions/upload-artifact@v6
         with:
