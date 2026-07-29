@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/guywaldman/polars-fastjson/compare/v0.3.1...v0.3.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* publish linux-musl wheels ([d49383e](https://github.com/guywaldman/polars-fastjson/commit/d49383e8194bf6eea8f8270c08e0a0d4f6c2ee25))
+
 ## [0.3.1](https://github.com/guywaldman/polars-fastjson/compare/v0.3.0...v0.3.1) (2026-06-28)
 
 
