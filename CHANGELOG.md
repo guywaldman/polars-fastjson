@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/guywaldman/polars-fastjson/compare/v0.3.2...v0.3.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* fix publish of sdist wheels ([caa793b](https://github.com/guywaldman/polars-fastjson/commit/caa793b41eb21b22eebdf561d445d1ac49d057cf))
+
 ## [0.3.2](https://github.com/guywaldman/polars-fastjson/compare/v0.3.1...v0.3.2) (2026-07-29)
 
 
