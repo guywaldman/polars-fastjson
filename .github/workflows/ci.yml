@@ -27,6 +27,30 @@ jobs:
       - name: Run CI checks
         run: just ci
 
+  polars-compatibility:
+    name: "Polars 1.x / 2.x compatibility"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@v7
+      - name: Install development tools
+        run: uv sync --locked --group dev --no-install-project
+      - name: Build plugin wheel once
+        run: |
+          .venv/bin/maturin build --release --locked --interpreter .venv/bin/python --out dist/polars-compat
+          uv pip install --python .venv/bin/python --no-deps dist/polars-compat/*.whl
+      - name: Test the same wheel with both Polars majors
+        run: |
+          for version in '1.8.0' '1.*' '2.*'; do
+            uv pip install --python .venv/bin/python --upgrade "polars==$version"
+            .venv/bin/python -c 'import polars; print("Testing Polars", polars.__version__)'
+            .venv/bin/python -m pytest -q
+          done
+
   prek:
     name: Prek
     runs-on: ubuntu-latest

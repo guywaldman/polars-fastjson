@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
-dependencies = ["polars>=1.8,<2"]
+dependencies = ["polars>=1.8,<3"]
 
 [tool.maturin]
 manifest-path = "crates/polars-fastjson-plugin/Cargo.toml"

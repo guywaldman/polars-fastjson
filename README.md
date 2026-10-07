@@ -37,6 +37,9 @@ uv add polars-fastjson
 pip install polars-fastjson
 ```
 
+Requires Python 3.11+ and supports Polars 1.x (1.8+) and 2.x with the same
+compiled plugin wheel.
+
 ## Quickstart
 
 ```python
